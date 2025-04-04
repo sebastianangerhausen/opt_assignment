@@ -1,0 +1,281 @@
+## ams_version=1.0
+
+Model Main_Section {
+	DeclarationSection Input_Data_Declaration {
+		Quantity SI_Unitless {
+			BaseUnit: -;
+			Conversions: %->- : #-># / 100;
+			Comment: "Expresses a dimensionless value.";
+		}
+		Set Days {
+			Index: d, d1;
+			Parameter: NewDay;
+		}
+		Set Hours {
+			SubsetOf: Integers;
+			Index: h, h1;
+			Property: ElementsAreLabels;
+			Definition: elementrange(0,23);
+		}
+		Set Centers {
+			Index: c, c1;
+		}
+		Set Specialists {
+			Index: s;
+		}
+		Set OnOffShore {
+			Index: o, o1;
+			Definition: data { OnShore, OffShore };
+		}
+		Parameter SpecialistIsFulltime {
+			IndexDomain: s;
+		}
+		Parameter SpecialistHourlyCapacity {
+			IndexDomain: s;
+		}
+		Parameter SpecialistPreference {
+			IndexDomain: (s, c);
+			Definition: {
+				! hospital priorities for each transcriptionist.  Like a matrix, where rows are MT's, columns are CustomerID's (hospitals), and data is priorities
+			}
+		}
+		Parameter SpecialistAvailability {
+			IndexDomain: (d, h,s);
+		}
+		Parameter CenterDemand {
+			IndexDomain: (d,h,c);
+		}
+		Parameter NewCenterDemand {
+			IndexDomain: (d,h,c);
+		}
+		Parameter CenterMixedPercentage {
+			IndexDomain: (c,o);
+			Unit: %;
+		}
+		Parameter CenterMixedPerc {
+			IndexDomain: c;
+			Unit: %;
+		}
+		Parameter CenterIsMixed {
+			IndexDomain: c;
+			Definition: {
+				CenterMixedPercentage(c, 'OnShore') > 0 
+				and
+				CenterMixedPercentage(c, 'OffShore') > 0
+			}
+		}
+		Parameter CenterWithDemand;
+		Parameter WebClockRatio {
+			InitialData: {
+				0.875 ;
+			}
+		}
+		Parameter MixedUseHours {
+			IndexDomain: h;
+		}
+		Parameter CenterMaxBacklogSize {
+			IndexDomain: (d,h,c);
+		}
+		Parameter CenterInPlan {
+			IndexDomain: c;
+			Definition: sum((d,h),CenterDemand(d,h,c)) >0;
+		}
+		Parameter ddd {
+			IndexDomain: (d,h);
+			Definition: sum(c,centerdemand(d,h,c))/sum(s,SpecialistAvailability(d,h,s));
+		}
+		Parameter cond {
+			IndexDomain: (d,h,s,c);
+			Definition: SpecialistPreference(s, c) and SpecialistAvailability(d, h, s);
+		}
+		Quantity SI_Time_Duration {
+			BaseUnit: s;
+			Conversions: minute->s : #-># * 60;
+			Comment: {
+				"Expresses the value for the duration of periods.
+				
+				The unit s has been added automatically because it is a required unit for DataExchange.
+				
+				The unit minute has been added automatically because it is a required unit for AimmsWebUI."
+			}
+		}
+	}
+	DeclarationSection Results {
+		Parameter SpecialistAtCenterByHour_v {
+			IndexDomain: (d,h,s,c);
+		}
+		Parameter SpecialistWorks_v {
+			IndexDomain: s;
+		}
+		Parameter SpecialistAtCenter_v {
+			IndexDomain: (s,c);
+		}
+	}
+	DeclarationSection Model_Declaration {
+		Variable SpecialistWorks {
+			IndexDomain: s|exists(c|SpecialistPreference(s, c));
+			Range: binary;
+		}
+		Variable SpecialistAtCenter {
+			IndexDomain: (s,c)|SpecialistPreference(s, c);
+			Range: binary;
+		}
+		Variable SpecialistAtCenterByHour {
+			IndexDomain: (d,h,s,c)|SpecialistPreference(s, c) and SpecialistAvailability(d, h, s);
+			Range: binary;
+		}
+		Variable SpecialistWorkloads {
+			IndexDomain: (d,h,s,c)|SpecialistPreference(s, c) and SpecialistAvailability(d, h, s);
+			Range: nonnegative;
+		}
+		Variable CenterHourlyBacklog {
+			IndexDomain: (d,h,c)|CenterMaxBacklogSize(d, h, c);
+			Range: [0, CenterMaxBacklogSize(d, h, c)];
+		}
+		Variable CenterHourlyUnmetDemand {
+			IndexDomain: (d,h,c)|CenterInPlan(c);
+			Range: nonnegative;
+		}
+		Variable CenterUnmetFulltimeDemand {
+			IndexDomain: (d,c)|CenterIsMixed(c);
+			Range: nonnegative;
+		}
+		Variable Objective1 {
+			Range: free;
+			Definition: {
+				  sum((c,d,h),  CenterHourlyUnmetDemand(d,h,c)*10)
+				+ sum((s,c),SpecialistAtCenter(s, c)*SpecialistPreference(s,c))
+			}
+		}
+		Variable Objective2 {
+			Range: free;
+			Definition: {
+				  sum((c,d,h), 100 * CenterHourlyUnmetDemand(d,h,c))
+				+ sum((d,c),     10 * CenterUnmetFulltimeDemand(d,c))
+				+ sum((d,h,c),   1 * CenterHourlyBacklog(d, h,c)  )
+			}
+		}
+		Constraint SpecialistAtCenterCon {
+			IndexDomain: (s,c)|SpecialistPreference(s, c);
+			Definition: SpecialistAtCenter(s, c) <= SpecialistWorks(s);
+		}
+		Constraint SpecialistAtCenterByHourCon {
+			IndexDomain: (d,h,s,c)|SpecialistPreference(s, c) and SpecialistAvailability(d, h, s) and CenterInPlan(c);
+			Definition: SpecialistAtCenterByHour(d, h,s,c) <= SpecialistAtCenter(s, c);
+		}
+		Constraint SpecialistOneCenterPerHourCon {
+			IndexDomain: (d,h,s)|SpecialistAvailability(d, h, s);
+			Definition: sum(c,SpecialistAtCenterByHour(d, h, s,c)) <= 1;
+		}
+		Constraint SpecialistWorkloadsCon {
+			IndexDomain: (d,h,s,c)|SpecialistPreference(s, c) and SpecialistAvailability(d, h, s) and CenterInPlan(c);
+			Property: ShadowPrice;
+			Definition: SpecialistWorkloads(d, h,s, c) <= SpecialistHourlyCapacity(s) * WebClockRatio *SpecialistAtCenterByHour(d, h,s, c);
+		}
+		Constraint CenterDemandBalanceCon {
+			IndexDomain: (d,h,c) | CenterInPlan(c);
+			Definition: {
+				sum((s),SpecialistWorkloads(d, h, s,c)) + CenterHourlyBacklog(d, h,c) + CenterHourlyUnmetDemand(d, h, c)
+				=CenterDemand(d, h, c) +  if (h=0) then CenterHourlyBacklog(d--1, h--1,c) else CenterHourlyBacklog(d,h-1,c) endif
+			}
+		}
+		Constraint MeetCenterDemand {
+			IndexDomain: (d,h,c);
+			Definition: {
+				sum((s),SpecialistWorkloads(d, h, s,c)) + CenterHourlyUnmetDemand(d, h, c)
+				=CenterDemand(d, h, c)
+			}
+		}
+		Constraint CenterFullTimeCon {
+			IndexDomain: (d,c)|CenterIsMixed(c);
+			Definition: {
+				sum((h,s)|SpecialistIsFulltime(s) and MixedUseHours(h), SpecialistWorkloads(d, h, s, c))
+				>=
+				CenterMixedPerc(c)/100*sum(h,CenterDemand(d, h, c))-CenterUnmetFulltimeDemand(d,c)
+			}
+		}
+		Set Step1Constraints {
+			SubsetOf: AllConstraints;
+			Definition: {
+				data 
+				    { Objective1                   , SpecialistAtCenterCon        , SpecialistAtCenterByHourCon  , SpecialistOneCenterPerHourCon,
+				      SpecialistWorkloadsCon       , MeetCenterDemand             }
+			}
+		}
+		Set Step2Constraints {
+			SubsetOf: AllConstraints;
+			Definition: data { Objective2, SpecialistWorkloadsCon, CenterDemandBalanceCon, CenterFullTimeCon };
+		}
+		ElementParameter mygmp {
+			Range: AllGeneratedMathematicalPrograms;
+		}
+		ElementParameter mygmp2 {
+			Range: AllGeneratedMathematicalPrograms;
+		}
+		MathematicalProgram MP1 {
+			Objective: Objective1;
+			Direction: minimize;
+			Constraints: Step1Constraints;
+			Variables: AllVariables;
+			Type: Automatic;
+		}
+		MathematicalProgram MP2 {
+			Objective: Objective2;
+			Direction: minimize;
+			Constraints: Step2Constraints;
+			Variables: AllVariables;
+			Type: Automatic;
+		}
+	}
+	Set ConstraintSet {
+		SubsetOf: AllConstraints;
+	}
+	Set RowSet {
+		SubsetOf: Integers;
+		Index: rr;
+		Parameter: FirstRow;
+	}
+	Parameter RHS {
+		IndexDomain: rr;
+	}
+	Procedure MainInitialization {
+		Body: {
+			ProfilerStart;
+		}
+	}
+	Procedure MainExecution {
+		Body: {
+			ProfilerRestart;
+			ShowProgressWindow;
+			
+			
+			!mip model
+			WebClockRatio := 0.8;
+			empty AllVariables;
+			mygmp := GMP::Instance::Generate(MP1);
+			GMP::Instance::Solve(mygmp);
+			
+			!lp model
+			
+			SpecialistAtCenterByHour(d,h,s,c) := SpecialistAtCenterByHour_v(d,h,s,c);
+			
+			SpecialistAtCenterByHour(d,h,s,c).nonvar :=1;
+			WebClockRatio := 0.9;
+			mygmp2 := GMP::Instance::Generate(MP2);
+			GMP::Instance::Solve(mygmp2);
+			
+			!modify demand
+			
+			while loopcount <= 10 do
+				NewCenterDemand(d,h,c) := CenterDemand(d,h,c)*(0.7+loopcount*0.05);
+				GMP::Row::SetRightHandSideMulti( mygmp2, (d,h,c) | CenterInPlan(c), CenterDemandBalanceCon(d,h,c),NewCenterDemand(d,h,c) );
+				GMP::Instance::Solve(mygmp2);
+			endwhile;
+		}
+	}
+	Procedure MainTermination {
+		Body: {
+			return DataManagementExit();
+		}
+	}
+}

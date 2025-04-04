@@ -1,0 +1,12 @@
+﻿* AIMMS
+MIP_relative_optimality_tolerance 0.05
+* CBC 2.9
+* CPLEX 22.1
+* IPOPT 3.11
+* GUROBI 6.0
+"GUROBI 6.0".MPS 1
+* CPLEX 12.6.3
+"CPLEX 12.6.3".LP_method 4
+* NETSOL
+* Environment
+Startup_Case "data\solved case.data"
