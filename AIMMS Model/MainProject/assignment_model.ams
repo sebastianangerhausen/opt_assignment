@@ -1,6 +1,6 @@
 ## ams_version=1.0
 
-Model Main_Section {
+Model Main_NTSPrototype {
 	DeclarationSection Input_Data_Declaration {
 		Quantity SI_Unitless {
 			BaseUnit: -;
@@ -17,11 +17,15 @@ Model Main_Section {
 			Property: ElementsAreLabels;
 			Definition: elementrange(0,23);
 		}
-		Set Centers {
+		Set Hospitals {
 			Index: c, c1;
+			Definition: {
+				!data { Inova, Carle }
+			}
 		}
-		Set Specialists {
+		Set Transcriptionists {
 			Index: s;
+			Parameter: NewTranscription;
 		}
 		Set OnOffShore {
 			Index: o, o1;
@@ -80,14 +84,6 @@ Model Main_Section {
 			IndexDomain: c;
 			Definition: sum((d,h),CenterDemand(d,h,c)) >0;
 		}
-		Parameter ddd {
-			IndexDomain: (d,h);
-			Definition: sum(c,centerdemand(d,h,c))/sum(s,SpecialistAvailability(d,h,s));
-		}
-		Parameter cond {
-			IndexDomain: (d,h,s,c);
-			Definition: SpecialistPreference(s, c) and SpecialistAvailability(d, h, s);
-		}
 		Quantity SI_Time_Duration {
 			BaseUnit: s;
 			Conversions: minute->s : #-># * 60;
@@ -143,7 +139,7 @@ Model Main_Section {
 		Variable Objective1 {
 			Range: free;
 			Definition: {
-				  sum((c,d,h),  CenterHourlyUnmetDemand(d,h,c)*10)
+				  sum((c,d,h),  CenterHourlyUnmetDemand(d,h,c))
 				+ sum((s,c),SpecialistAtCenter(s, c)*SpecialistPreference(s,c))
 			}
 		}
