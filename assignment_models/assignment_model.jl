@@ -120,6 +120,15 @@ function solve_assignment(D, H, C, S, DHS, SC, input_data,result_data;  is_solve
     @variable(model, specialistWorkloads[dhsc in DHSC] >= 0)
     @variable(model, centerHourlyUnmetDemand[dhc in DHC] >= 0)
 
+    # Create dictionary before constraint building and pre-allocate memory for better performance.
+    DHC_to_DHSC = Dict{Tuple{Int,Int,Int}, Vector{Tuple{Int,Int,Int,Int}}}(dhc => [] for dhc in DHC)
+    sizehint!(DHC_to_DHSC, length(DHC))
+    for dhsc in DHSC
+        dhc = (dhsc[1], dhsc[2], dhsc[4])
+        if dhc in DHC
+            push!(DHC_to_DHSC[dhc], dhsc)
+        end
+    end
 
     if lp_solve
         webClockRatio = 0.9
@@ -133,7 +142,7 @@ function solve_assignment(D, H, C, S, DHS, SC, input_data,result_data;  is_solve
         specialistAtCenterByHour_v = Dict((d, h, s, c) => val for ((d, h, s, c), val) in result_data["specialistAtCenterByHour"])
         @constraint(model, specialistWorkloadsCon[dhsc in DHSC], specialistWorkloads[dhsc] <= specialistHourlyCapacity[dhsc[3]] * webClockRatio * get(specialistAtCenterByHour_v,dhsc,0))
         @constraint(model,centerDemandBalanceCon[dhc in DHC],
-            sum(specialistWorkloads[dhsc] for dhsc in DHSC if dhsc[1] == dhc[1] && dhsc[2] == dhc[2] && dhsc[4] == dhc[3]) +
+            sum(specialistWorkloads[dhsc] for dhsc in DHC_to_DHSC[dhc]) +
             centerHourlyBacklog[dhc] +
             centerHourlyUnmetDemand[dhc] ==
             centerDemand[dhc] +
@@ -168,7 +177,7 @@ function solve_assignment(D, H, C, S, DHS, SC, input_data,result_data;  is_solve
 
         @constraint(model, specialistWorkloadsCon[dhsc in DHSC], specialistWorkloads[dhsc] <= specialistHourlyCapacity[dhsc[3]] * webClockRatio * specialistAtCenterByHour[dhsc])
         @constraint(model, centerDemandBalanceCon[dhc in DHC],
-            sum(specialistWorkloads[dhsc] for dhsc in DHSC if dhsc[1] == dhc[1] && dhsc[2] == dhc[2] && dhsc[4] == dhc[3]) +
+            sum(specialistWorkloads[dhsc] for dhsc in DHC_to_DHSC[dhc]) +
             centerHourlyUnmetDemand[dhc] == centerDemand[dhc])
 
     end
